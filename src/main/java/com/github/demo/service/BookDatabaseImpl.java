@@ -5,6 +5,7 @@ import com.github.demo.model.Book;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.net.ProxySelector;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -61,6 +62,7 @@ public class BookDatabaseImpl implements BookDatabase {
 
         // Default to a sqlite in memory database if no database url has been provided
         if (url == null) {
+            logger.info("sqlite url is null");
             url = "jdbc:sqlite::memory:";
         }
 
@@ -229,7 +231,7 @@ public class BookDatabaseImpl implements BookDatabase {
 
         do {
             try {
-                connection = DriverManager.getConnection(url, props);
+                  connection = DriverManager.getConnection(url, props);
             } catch (SQLException e) {
                 retryCount++;
 
