@@ -1,0 +1,80 @@
+name: Destroy Environment -- Azure
+
+#
+# Using the deploymentManager.js script we put associated deployments into a "failed" state
+# to be able to trigger a clean up process of the environment. Actions does not support
+# the "inactive" state as a trigger by design.
+#
+
+on:
+  deployment_status
+
+jobs:
+  deploy_details:
+    name: Extract Deployment Details
+    if: github.event.deployment_status.state == 'failure'
+
+    runs-on: ubuntu-22.04
+
+    outputs:
+      deployment_github_ref: ${{ steps.deployment_data.outputs.deployment_github_ref }}
+
+    steps:
+      - name: Checkout Sources
+        uses: actions/checkout@v3
+
+      - name: Extract Deployment Details and Report Deployment in Progress
+        id: deployment_data
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const deployment = context.payload.deployment
+              , environment = deployment.environment
+              ;
+
+            function setOutput(name, value) {
+              core.setOutput(name, value);
+
+              core.info(`name:   ${name}`);
+              core.info(`value:  ${value}`);
+              core.info('');
+            }
+
+            core.startGroup('Extracted Deployment details');
+            setOutput(`deployment_github_ref`, deployment.ref);
+            setOutput('environment', deployment.environment);
+            core.endGroup();
+
+
+  destroy:
+    name: Azure Destroy Webapps
+
+    runs-on: ubuntu-22.04
+
+    needs:
+       - deploy_details
+
+    steps:
+      - name: Checkout Sources
+        uses: actions/checkout@v3
+
+      - name: Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.DEMO_AZURE_SERVICE_PROVIDER_CREDENTIALS }}
+
+      - name: Delete Web Apps attached to PR
+        env:
+          ANSIBLE_VERBOSITY: -vv
+        run: |
+          docker run \
+            -v `pwd`/ansible:/ansible \
+            -w /ansible \
+            -e SERVICE_PLAN="${{ secrets.AZURE_APP_PLAN_NAME }}" \
+            -e RESOURCE_GROUP="${{ secrets.AZURE_RESOURCE_GROUP_NAME }}" \
+            -e DEPLOYMENT_REF="${{ needs.deploy_details.outputs.deployment_github_ref }}" \
+            -e AZURE_JSON_CREDENTIALS='${{ toJSON(secrets.DEMO_AZURE_SERVICE_PROVIDER_CREDENTIALS) }}' \
+            -e GITHUB_REPOSITORY="${{ github.repository }}" \
+            ghcr.io/octodemo/container-ansible-development:base-20210217 ./destroy_azure_webapps.yml $ANSIBLE_VERBOSITY
+        shell: bash

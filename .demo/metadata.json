@@ -1,0 +1,8 @@
+{
+  "name": "Bookstore v2",
+  
+  "lifecycle": {
+    "warning": 7
+    "terminate": 14
+  }
+}

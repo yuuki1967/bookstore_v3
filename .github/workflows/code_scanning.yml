@@ -1,0 +1,41 @@
+name: Code scanning
+
+on:
+  push:
+  # Build all the branches here as we want SARFIF feedback in Codespaces
+  #    branches:
+  #      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    name: CodeQL Code Scanning
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v3
+
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          java-version: 11
+          java-package: jdk
+          distribution: microsoft
+          # Using the integrated cache functionality to speed up builds
+          cache: maven
+
+      - name: Initialize CodeQL Scanning
+        uses: github/codeql-action/init@v2
+        with:
+          languages: java
+
+      # We are using a custom build step to have greater control over the build process over using autobuild
+      - name: Custom Build Step
+        run: mvn compile -B
+        shell: bash
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v2

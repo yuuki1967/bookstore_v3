@@ -1,0 +1,135 @@
+name: Deploy Environment -- Azure
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_container_image:
+        description: The name of the container image.
+        required: true
+
+      deployment_github_ref:
+        description: Repository reference for the deployment to be attached to.
+        required: true
+
+      app_type:
+        description: Azure application type.
+        required: true
+
+      app_name:
+        description: The name of the application.
+        required: true
+
+      environment_name:
+        description: The name of the environment to be deployed
+        required: true
+
+jobs:
+  validate_parameters:
+    name: Validate deployment parameters
+    runs-on: ubuntu-22.04
+
+    outputs:
+      validated_container_registry_url: ${{ steps.validate.outputs.container_registry_url }}
+      validated_container_full_url: ${{ steps.validate.outputs.container_full_url }}
+
+    steps:
+      - name: Validate input parameters
+        id: validate
+        uses: actions/github-script@v6
+        env:
+          container_image: ${{ github.event.inputs.app_container_image }}
+        with:
+          script: |
+            const image = process.env.container_image
+              // , version = process.env.container_version
+              , registryMatch = /^(.*?)\//.exec(image)
+              ;
+
+            if (! registryMatch || registryMatch[1].length === 0) {
+              core.setFailed(`No container registry detected from image '${image}', cannot create deployment.`);
+            }
+            core.setOutput('container_registry_url', registryMatch[1]);
+            core.setOutput('container_full_url', `${image}`);
+
+      # Ensure we can authenticate using the same credendtials as Azure
+      - name: Authenticate with Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ steps.validate.outputs.container_registry_url }}
+          username: "<token>"
+          password: ${{ secrets.OCTODEMOBOT_GHPR_TOKEN }}
+
+      # Ensure that we can reference the container and the URL is valid before we deploy to Azure
+      - name: Pull Container
+        run: docker pull ${{ steps.validate.outputs.container_full_url }}
+
+  deploy:
+    name: Deploy to Environment
+    runs-on: ubuntu-22.04
+
+    needs:
+      - validate_parameters
+
+    environment:
+      name: ${{ github.event.inputs.environment_name }}
+      url: ${{ steps.azure_deployment_details.outputs.url }}
+
+    steps:
+      - name: Checkout Sources
+        uses: actions/checkout@v3
+
+      - name: Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.DEMO_AZURE_SERVICE_PROVIDER_CREDENTIALS }}
+
+      - name: Azure Deployment
+        id: azure_deploy
+        run: |
+          outputsFile=$GITHUB_WORKSPACE/deployment_outputs.json
+
+          az deployment group create \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP_NAME }} \
+            --template-file ./bicep/webapp.bicep \
+            --parameters \
+              servicePlanName=${{ secrets.AZURE_APP_PLAN_NAME }} \
+              environmentName=${{ github.event.inputs.environment_name }} \
+              containerImage="${{ needs.validate_parameters.outputs.validated_container_full_url }}" \
+              containerRegistry="${{ needs.validate_parameters.outputs.validated_container_registry_url }}" \
+              containerRegistryUsername=token \
+              containerRegistryPassword="${{ secrets.OCTODEMOBOT_GHPR_TOKEN }}" \
+              githubRef="${{ github.event.inputs.deployment_github_ref }}" \
+              githubRepository="${{ github.repository }}" \
+            --query properties.outputs \
+            > $outputsFile
+
+          echo "Captured Outputs from deployment"
+          cat $outputsFile
+          echo "::set-output name=deployment_outputs::$outputsFile"
+        shell: bash
+
+      - name: Extract environment URL
+        id: azure_deployment_details
+        uses: actions/github-script@v6
+        env:
+          json_file: ${{ steps.azure_deploy.outputs.deployment_outputs }}
+        with:
+          script: |
+            const fs = require('fs');
+
+            try {
+              const fileContents = fs.readFileSync(process.env.json_file);
+
+              core.startGroup('Raw file contents');
+              core.info(fileContents.toString());
+              core.endGroup();
+
+              const data = JSON.parse(fileContents);
+              core.startGroup(`Deployment Outputs`);
+              core.info(JSON.stringify(data, null, 2));
+              core.setOutput('url', data.url.value);
+              core.endGroup();
+
+            } catch (err) {
+              core.setFailed(`Failed to read data from ${file}; ${err.message}`);
+            }

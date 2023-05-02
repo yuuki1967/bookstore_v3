@@ -1,0 +1,50 @@
+name: Container Vulnerability Scanning
+
+on:
+  workflow_dispatch:
+    inputs:
+      container_image:
+        description: The container image to be scanned
+        type: string
+        required: true
+
+      container_type:
+        description: The container type being scanned
+        type: string
+        required: true
+
+      commit_ref:
+        description: The ref on the repository that the container was built from
+        type: string
+        required: true
+
+      commit_sha:
+        description: The SHA of the commit that the container was built from
+        type: string
+        required: true
+
+      container_digest:
+        description: The container image digest
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+  # This is used to complete the identity challenge with sigstore/fulcio when running outside of PRs.
+  id-token: write
+
+  statuses: write
+  packages: write
+  security-events: write
+
+jobs:
+  container_scan:
+    uses: octodemo-resources/common-workflows/.github/workflows/container_vulnerability_scanning.yml@main
+    with:
+      container_image: ${{ github.event.inputs.container_image }}
+      container_type: ${{ github.event.inputs.container_type }}
+      container_digest: ${{ github.event.inputs.container_digest }}
+      commit_sha: ${{ github.event.inputs.commit_sha }}
+      commit_ref: ${{ github.event.inputs.commit_ref }}

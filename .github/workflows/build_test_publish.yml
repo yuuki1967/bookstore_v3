@@ -1,0 +1,195 @@
+name: Build - Test - Publish
+
+on:
+  push:
+
+# The name of the `Build java 11 on ubuntu-20.04` build is used as a required context inside the repository on protected
+#  branches configuration. Any changes to the OS or Java version will need to be reflected in repository settings.
+
+jobs:
+  build_parameters:
+    name: Define Build Parameters
+    runs-on: ubuntu-22.04
+
+    # We need to share details across job boundaries, expose the step outputs at the job level
+    outputs:
+      container_name: ${{ steps.build_params.outputs.container_name }}
+      container_owner: ${{ steps.build_params.outputs.container_owner }}
+      maven_changelist: ${{ steps.build_params.outputs.maven_changelist }}
+      maven_sha1: ${{ steps.build_params.outputs.maven_sha1 }}
+      github_branch_name: ${{ steps.build_params.outputs.github_ref_branch_name }}
+      github_short_sha: ${{ steps.build_params.outputs.github_short_sha }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Define Build Parameters
+        id: build_params
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const scriptPath = require('path').resolve('./.github/workflows/scripts/buildParameters.js')
+              , buildParameters = require(scriptPath);
+            ;
+            buildParameters(context, core).injectBuildParameters();
+
+
+  publish_maven_dependencies:
+    name: Publish Maven dependencies
+
+    # We only perform dependency analysis from the default branch, like dependabot does
+    if: github.ref == 'refs/heads/main'
+
+    runs-on: ubuntu-22.04
+
+    needs:
+      - build_parameters
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Maven Dependency Tree Dependency Submission
+        uses: advanced-security/maven-dependency-submission-action@v2.0
+
+
+  build_and_test:
+    name: Build java ${{ matrix.java }} on ${{ matrix.os }}
+
+    runs-on: ${{ matrix.os }}
+
+    needs:
+      - build_parameters
+
+    permissions:
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-20.04
+          - ubuntu-22.04
+          # - windows-latest
+        java:
+          - 11
+
+    # We need to share details across job boundaries, expose the step outs at the job level
+    outputs:
+      jar_version: ${{ steps.maven_version.outputs.version }}
+      artifact_name: ${{ steps.artifact_parameters.outputs.artifact_name }}
+      artifact_path: ${{ steps.artifact_parameters.outputs.artifact_path }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Set up JDK ${{ matrix.java }}
+        uses: actions/setup-java@v3
+        with:
+          java-version: ${{ matrix.java }}
+          java-package: jdk
+          distribution: microsoft
+          # Using the integrated cache functionality to speed up builds
+          cache: maven
+
+      - name: Build Test and Package
+        run: |
+          mvn package -B \
+            -Dsha1="${{ needs.build_parameters.outputs.maven_sha1 }}" \
+            -Dchangelist="${{ needs.build_parameters.outputs.maven_changelist }}" \
+            -Dgithub.repository="${GITHUB_REPOSITORY}"
+        shell: bash
+
+      - name: Output Version
+        id: maven_version
+        run: |
+          cat target/classes/version.properties >> $GITHUB_OUTPUT
+
+      - name: Set artifact parameters
+        if: matrix.os == 'ubuntu-20.04'
+        id: artifact_parameters
+        uses: actions/github-script@v6
+        with:
+          script: |
+            core.setOutput('artifact_name', `application-jar`);
+            core.setOutput('artifact_path', `target`);
+
+      - name: Upload application jar artifact
+        if: matrix.os == 'ubuntu-20.04'
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ steps.artifact_parameters.outputs.artifact_name }}
+          path: ${{ steps.artifact_parameters.outputs.artifact_path }}/bookstore-v3-${{ steps.maven_version.outputs.version }}.jar
+          if-no-files-found: error
+
+
+  build_application_container:
+    name: Container Build - application
+
+    # Do not run this on dependabot triggered activities as it cannot read the Actions Secrets.
+    if: ${{ !(contains(github.actor, 'dependabot[bot]')) }}
+
+    needs:
+      - build_parameters
+      - build_and_test
+
+    uses: octodemo-resources/common-workflows/.github/workflows/build_and_publish_container.yml@main
+    with:
+      container_name: ${{ needs.build_parameters.outputs.container_owner }}/${{ needs.build_parameters.outputs.container_name }}
+      container_type: app
+      version: ${{ needs.build_and_test.outputs.jar_version }}
+      # Fetch the cached build artifact for the Jar so it can be built into the container
+      artifact_name: ${{ needs.build_and_test.outputs.artifact_name }}
+      artifact_path: ${{ needs.build_and_test.outputs.artifact_path }}
+    secrets:
+      application_id: ${{ secrets.OCTODEMOBOT_APPLICATION_ID_REPO_AUTOMATION }}
+      application_private_key: ${{ secrets.OCTODEMOBOT_APPLICATION_KEY_REPO_AUTOMATION }}
+
+
+  continuous_delivery:
+    name: Continous Delivery Deployment
+
+    # We only perform continuous delivery workflows (deploying through to production) from the default branch
+    if: github.ref == 'refs/heads/main'
+
+    runs-on: ubuntu-22.04
+
+    needs:
+      - build_parameters
+      - build_and_test
+      - build_application_container
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Get temporary token for creating deployment
+        id: temp_token
+        uses: peter-murray/workflow-application-token-action@v2.1
+        with:
+          application_id: ${{ secrets.OCTODEMOBOT_APPLICATION_ID_REPO_AUTOMATION }}
+          application_private_key: ${{ secrets.OCTODEMOBOT_APPLICATION_KEY_REPO_AUTOMATION }}
+
+      - name: Create Deployment
+        id: create_deployment
+        uses: actions/github-script@v6
+        env:
+          app_container_image: ${{ needs.build_application_container.outputs.container_name }}
+        with:
+          github-token: ${{ steps.temp_token.outputs.token }}
+          script: |
+            const scriptPath = require('path').resolve('./.github/workflows/scripts/deployEnvironment.js')
+              , deployEnvironment = require(scriptPath)
+              ;
+
+            const payload = {
+              context: context,
+              github: github,
+              appContainerImage: process.env.app_container_image,
+              sha: context.sha,
+              head: context.ref,
+              environment: 'prod',
+            }
+            await deployEnvironment(payload);

@@ -1,0 +1,52 @@
+name: "Custom CodeQL Config for lower precision"
+disable-default-queries: true
+queries:
+  - uses: security-extended
+  - uses: security-and-quality
+query-filters:
+- include:
+    kind:
+    - problem
+    - path-problem
+    - alert
+    - path-alert
+    precision:
+    - low
+    - medium
+    - high
+    - very-high
+    tags contain:
+    - security
+    - correctness
+    - maintainability
+    - readability
+- include:
+    kind:
+    - problem
+    - path-problem
+    precision:
+    - medium
+    problem.severity:
+    - error
+    - warning
+    - recommendation
+    tags contain:
+    - security
+- include:
+    kind:
+    - diagnostic
+- include:
+    kind:
+    - metric
+    tags contain:
+    - summary
+- exclude:
+    deprecated: //
+- exclude:
+    query path:
+      - /^experimental\/.*/
+      - Metrics/Summaries/FrameworkCoverage.ql
+      - /Diagnostics/Internal/.*/
+- exclude:
+    tags contain:
+      - model-generator

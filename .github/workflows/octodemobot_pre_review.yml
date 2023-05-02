@@ -1,0 +1,41 @@
+name: Octodemobot PR Review
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: The number of the PR to apply a code review to
+        required: true
+
+      comment:
+        description: The comment associated with the Pull Request review
+        default: ''
+        required: false
+
+      outcome:
+        description: The outcome of the Pull Request, approve, request_changes, or comment
+        default: approve
+        required: false
+
+
+jobs:
+  apply_code_review:
+    name: Apply Code Review
+
+    runs-on: ubuntu-20.04
+
+    steps:
+      - name: Get temporary token for octodemobot application
+        id: temp_token
+        uses: peter-murray/workflow-application-token-action@v2.1
+        with:
+          application_id: ${{ secrets.OCTODEMOBOT_APPLICATION_ID_REPO_AUTOMATION }}
+          application_private_key: ${{ secrets.OCTODEMOBOT_APPLICATION_KEY_REPO_AUTOMATION }}
+
+      - name: Apply PR Code Review
+        uses: octodemo/pull-request-review-action@main
+        with:
+          pr_number: ${{ github.event.inputs.pr_number }}
+          outcome: ${{ github.event.inputs.outcome }}
+          comment: ${{ github.event.inputs.comment }}
+          token: ${{ steps.temp_token.outputs.token }}
