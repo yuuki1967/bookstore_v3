@@ -65,7 +65,15 @@ Building and running the container locally without the tasks in GitHub Codespace
 
 ### Flow diagram
 
-The flow diagram below depicts the Actions' workflows that are pre-configured, the events that trigger each of them and the different Azure environments that are spinned up during the demo. 
+The flow diagram below depicts the Actions' workflows that are pre-configured, the events that trigger each of them and the different Azure environments that are spinned up during the demo.
 
 ![Azure_Bookstore_Demo drawio](https://user-images.githubusercontent.com/3329307/140162304-a72882b5-291a-4a6c-b43f-957b9a2a268c.png)
 
+### Update for building and running it on MacOS M1
+```
+modify the version
+$ mvn package
+$ docker build . --build-arg VERSION=1.0.0-SNAPSHOT --tag bookstore-v3:latest
+$ docker run -p 8080:8080 bookstore-v3:latest
+
+```

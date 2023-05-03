@@ -32,5 +32,6 @@
   },
   "[xml]": {
     "editor.tabSize": 4
-  }
+  },
+  "sarif-viewer.connectToGithubCodeScanning": "on"
 }

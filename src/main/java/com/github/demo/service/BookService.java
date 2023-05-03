@@ -27,4 +27,9 @@ public class BookService {
     public List<Book> searchBooks(String name) throws BookServiceException {
         return this.booksDatabase.getBooksByTitle(name);
     }
+    // add method to search book by Author
+    public List<Book> searchBooksByAuthor(String author) throws BookServiceException {
+        return this.booksDatabase.getBooksByAuthor(author);
+    }
+
 }

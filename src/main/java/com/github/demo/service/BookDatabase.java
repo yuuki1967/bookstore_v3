@@ -11,6 +11,8 @@ public interface BookDatabase {
 
     List<Book> getBooksByTitle(String name) throws BookServiceException;
 
+    List<Book> getBooksByAuthor(String author) throws BookServiceException;
+
     void populate(Collection<Book> books) throws BookServiceException;
 
     void destroy() throws BookServiceException;

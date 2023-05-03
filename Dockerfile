@@ -1,10 +1,10 @@
 # The version number tag for the base container
-ARG FROM_VERSION=11.0.14_9-jre-alpine
+ARG FROM_VERSION=11.0.13_8-jre-focal
 FROM eclipse-temurin:${FROM_VERSION}
 
-RUN apk update \
-  && apk upgrade  \
-  && rm -rf /var/cache/apk/*
+#RUN apk update \
+#  && apk upgrade  \
+#  && rm -rf /var/cache/apk/*
 
 ARG REPOSITORY_NAME=octodemo-resources/template-bookstore-v3
 ARG VERSION=0.0.0-SNAPSHOT

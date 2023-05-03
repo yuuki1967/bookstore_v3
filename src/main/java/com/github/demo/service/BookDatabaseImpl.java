@@ -147,6 +147,43 @@ public class BookDatabaseImpl implements BookDatabase {
     }
 
     @Override
+    public List<Book> getBooksByAuthor(String author) throws BookServiceException {
+        List<Book> books = new ArrayList<Book>();
+        if(!isValid()){
+            throw new BookServiceException("Database connection is not valid, check logs for failure details.");
+        }
+        Statement stmt = null;
+        //use prepare statement to get the book by author
+        try{
+            stmt = connection.createStatement();
+            String query = "SELECT * FROM books WHERE author LIKE '%" + author + "%'";
+            ResultSet results = stmt.executeQuery(query);
+            while(results.next()){
+                Book book = new Book(
+                results.getString("author"),
+                results.getString("title"),
+                results.getString("image")
+                );
+                books.add(book);
+            }
+        }catch(SQLException e){
+            logger.error("Failed while searching for {}'", author);
+            throw new BookServiceException(e);
+        } finally {
+            try {
+                if (stmt != null) {
+                    stmt.close();
+                }
+            } catch (SQLException se) {
+                // Do nothing
+            } finally {
+                stmt = null;
+            }
+        }
+        return books;
+    }
+
+    @Override
     public void destroy() {
         try {
             if (connection != null) {

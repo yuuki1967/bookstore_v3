@@ -16,13 +16,25 @@ public class BookServiceTest {
 
     // Testing API token key
     private static final String API_TOKEN = "AIzaSyAQfxPJiounkhOjODEO5ZieffeBv6yft2Q";
-    
+
     private BookService bookService;
 
     @Test
     public void testGetBooks() throws BookServiceException {
         List<Book> books = bookService.getBooks();
         assertEquals("list length should be 6", 6, books.size());
+    }
+
+    @Test
+    public void testSearchBooks() throws BookServiceException {
+        List<Book> books = bookService.searchBooks("Scrum");
+        assertEquals("list length should be 1", 1, books.size());
+    }
+
+    @Test
+    public void testSearchBooksByAuthor() throws BookServiceException {
+        List<Book> books = bookService.searchBooksByAuthor("Eric Ries");
+        assertEquals("list length should be 1", 1, books.size());
     }
 
     @Before
